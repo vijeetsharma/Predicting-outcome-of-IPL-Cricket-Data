@@ -1,0 +1,597 @@
+---
+title: "FinalProject"
+author: "Meet Valia"
+date: "5/2/2020"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+matches = read.csv("matches.csv")
+tempmatches = matches
+matches = matches[c(1:3,5:8,11)]
+matches = na.omit(matches)
+
+matches = subset(matches, team1 != 'Gujarat Lions')
+matches = subset(matches, team2 != 'Gujarat Lions')
+matches = subset(matches, team1 != 'Rising Pune Supergiant')
+matches = subset(matches, team2 != 'Rising Pune Supergiant')
+matches = subset(matches, team1 != 'Rising Pune Supergiants')
+matches = subset(matches, team2 != 'Rising Pune Supergiants')
+matches = subset(matches, team1 != 'Pune Warriors')
+matches = subset(matches, team2 != 'Pune Warriors')
+matches = subset(matches, team1 != 'Kochi Tuskers Kerala')
+matches = subset(matches, team2 != 'Kochi Tuskers Kerala')
+
+matches = data.frame(lapply(matches, function(x) {
+  gsub("Delhi Daredevils", "Delhi Capitals", x)
+}))
+matches = data.frame(lapply(matches, function(x) {
+  gsub("Deccan Chargers", "Sunrisers Hyderabad", x)
+}))
+
+
+
+homegrounds = c('Mumbai', 'Bangalore', 'Kolkata', 'Delhi', 'Chandigarh', 'Jaipur', 'Chennai', 'Hyderabad')
+
+matches = subset(matches, city %in% homegrounds)
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+deliveries = read.csv("deliveries.csv")
+tempdeliveries = deliveries
+deliveries$match_id = as.character(deliveries$match_id)
+matches$id = as.character(matches$id)
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+homeTeam = read.csv("hometeams.csv")
+colnames(homeTeam)[1] <- 'city'  
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+newData = deliveries %>% 
+  left_join(matches, by = c("match_id" = "id"))
+#newData = left_join(deliveries, matches, by = 'match_id = id')
+newData = newData[c(1,2,5,6,18, 22:28)]
+newData = na.omit(newData)
+
+newData = subset(newData, inning != 3)
+newData = subset(newData, inning != 4)
+newData = subset(newData, inning != 5)
+```
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+newData = newData %>%
+  left_join(homeTeam, by = c("city" = "city"))
+```
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+tossAdvantage = mean(as.character(newData$toss_winner) == as.character(newData$winner)) *100
+#print("The percentage of times that the team that wins the toss also goes on to win the match is")
+tossAdvantage
+```
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+newData = newData[newData$winner != '', ]
+matches$winner = factor(matches$winner)
+#toss.adv = matches
+newData$toss_winner = as.factor(newData$toss_winner)
+newData$winner = as.factor(newData$winner)
+newData = newData[newData$winner != '', ]
+newData$tossAdvantage = ifelse(as.character(newData$toss_winner) == as.character(newData$winner), 1, 0)
+newData$homeAdvantage = ifelse(as.character(newData$winner) == as.character(newData$hometeam), 1, 0)
+
+newData$homeTeamBatsFirst  = with(newData, 
+                     ifelse(as.character(hometeam) == as.character(toss_winner) & toss_decision == 'bat', 1, 
+                     ifelse(as.character(hometeam) != as.character(toss_winner) & toss_decision == 'field', 1, 0)))
+newData = newData[ , -which(names(newData) %in% c("city", "abbr"))]
+#names(newData)[!names(newData) %in% c(),]
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+overRate1 <- newData %>% group_by(match_id, inning, over)
+
+overRate1 = overRate1 %>% summarise(
+  sumRate = sum(total_runs)
+)
+
+
+overRate = overRate1 %>% group_by(inning, over)
+overRate = overRate %>% summarise(
+  avgRate = mean(sumRate)
+)
+overRate$inning = as.factor(overRate$inning)
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+ggplot(overRate, aes(x = over, y = avgRate, group = inning, color = inning)) + geom_line() +
+  xlab("Over") +
+ ylab("Runs") + ggtitle("Average Runs Scored Per Over") +
+  scale_color_manual(values=c("blue", "red")) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
+  theme(plot.title = element_text(hjust = 0.5))
+  
+  
+```
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+hometeams = read.csv("hometeams.csv")
+colnames(hometeams)[colnames(hometeams) == 'ï..city'] <- 'city'
+colnames(hometeams)[colnames(hometeams) == 'hometeam'] <- 'teams'
+teams = data.frame(hometeams$teams,hometeams$abbr)
+colnames(teams)[colnames(teams) == 'hometeams.abbr'] <- 's_team'
+colnames(teams)[colnames(teams) == 'hometeams.teams'] <- 'teams'
+
+```
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+
+dismissal = deliveries%>%
+  left_join(matches, by=c("match_id"="id"))%>%
+   left_join(teams,by=c("batting_team"="teams"))%>%
+  filter(dismissal_kind!="")%>%
+  group_by(match_id,inning, over )%>%
+  summarize(wickets =n()) %>%
+  group_by(inning,over) %>%
+  summarise(wickets = mean(wickets))
+
+dismissal = subset(dismissal, inning != 3)
+dismissal = subset(dismissal, inning != 4)
+
+dismissal$inning = as.factor(dismissal$inning)
+
+
+ggplot(dismissal, aes(x = over, y = wickets, color = inning,group = inning)) + geom_line() +
+  xlab("Over") +
+ ylab("Wickets") + ggtitle("Average Wickets Taken Per Over") +
+  scale_color_manual(values=c("blue", "red")) +
+theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+batsmen<- tempdeliveries%>%
+  left_join(tempmatches, by=c("match_id"="id"))%>%
+        group_by(season,batsman)%>%
+ summarize(runs =max(sum(batsman_runs,na.rm=TRUE)))%>%
+  arrange(season,desc(runs))%>%
+  filter(runs==max(runs))
+
+g1 = ggplot(batsmen,aes(x=season,y=runs,colour=batsman,fill=batsman))+
+  geom_bar(position = "stack",  show.legend = FALSE, width = .6,stat="identity")+
+   geom_text(aes(label=batsman),position = position_stack(vjust = .5), color = "#FFFFFF") +
+    #geom_text(aes(label=batsman,hjust=-.25, colour="green"))+
+  theme(legend.position="none")+
+     coord_flip()+
+  scale_x_discrete(name="Season", limits=c(2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019))+
+  ggtitle("Highest Run Scorers Each Season")
+
+
+```
+
+```{r results='hide', message=FALSE, warning=FALSE, fig.width=10, fig.height=4}
+tempdeliveries$wickets <- as.numeric(ifelse(tempdeliveries$player_dismissed =="" ,"",1))
+
+bowler<- tempdeliveries%>%
+  left_join(tempmatches, by=c("match_id"="id"))%>%
+  filter(dismissal_kind!="run out")%>%
+        group_by(season,bowler)%>%
+ summarize(wicket =max(sum(wickets,na.rm=TRUE)))%>%
+  arrange(season,desc(wicket))%>%
+  filter(wicket==max(wicket))
+
+g2 = ggplot(bowler,aes(x=season,y=wicket,colour=bowler,fill=bowler))+
+  geom_bar(position = "stack",  show.legend = FALSE, width = .6,stat="identity")+
+  geom_text(aes(label=bowler),position = position_stack(vjust = .5), color = "#FFFFFF") +
+    #geom_text(aes(label=bowler,hjust=-.1, colour="green"))+
+  theme(legend.position="none")+
+  coord_cartesian(xlim = c(0, 50))+
+     coord_flip()+
+  scale_x_discrete(name="Season", limits=c(2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019))+
+  ggtitle("Highest Wicket Takers Each Season")
+
+library(gridExtra)
+grid.arrange(g1, g2, ncol = 2)
+```
+
+
+
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+tossAdvYear <- newData %>% group_by(season, toss_winner)
+
+tossAdvYear = tossAdvYear %>% summarise(
+  winRatio = mean(tossAdvantage)
+)
+
+```
+
+
+```{r, fig.height=5, fig.width= 7, results='hide', message=FALSE, warning=FALSE}
+tossAdvYear1 = aggregate(winRatio ~ toss_winner, FUN = mean, data = tossAdvYear)
+hometeam1 = hometeams
+colnames(hometeam1)[colnames(hometeam1) == 'teams'] <- 'toss_winner'
+
+tossAdvYear2 = left_join(tossAdvYear1, hometeam1, by = 'toss_winner')
+
+ggplot(tossAdvYear2, aes(x = abbr, y = winRatio * 100)) +
+  geom_bar(position = "dodge", stat = "identity") + xlab("Teams") +
+  ylab("Percentage") + ggtitle("Percentage of Matches Won on Winning the Toss") +
+  theme_grey(base_size = 15) +
+  theme(axis.text.x = element_text(angle = 0))
+```
+
+
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+#newData & runsData by match_id
+
+modelData = newData %>% group_by(match_id, inning, toss_winner, hometeam, toss_decision, winner, tossAdvantage,homeAdvantage, homeTeamBatsFirst)
+
+modelData = modelData %>% summarise(
+  total_runs = sum(total_runs)
+)
+```
+
+
+```{r}
+# Toss Advantage
+#hometeam * toss_winner + total_runs
+model1 = glm(tossAdvantage ~ hometeam + toss_winner + total_runs + toss_decision, data = modelData, 
+                     family = binomial)
+summary(model1)
+library(pROC)
+
+sigmoid = function(x){
+ coe = coef(model1)
+ 
+ total_coef = length(coe)
+ y = coe[1]
+ for(i in 2:total_coef)
+ {
+    y = y + coe[i] * x^(i-1)
+ }
+ 
+ return(inv.logit(y))
+}
+
+a = modelData
+pred = predict(model1, type = "response", newdata = modelData)
+predicted_logit_model_1 <- ifelse(pred > 0.5, 1, 0)
+a$predBin = predicted_logit_model_1
+a$predicted = pred
+
+accuracy <- mean(modelData$tossAdvantage == predicted_logit_model_1 )
+#accuracy_df <- data.frame(Model = "Model Accuracy", Accuracy = accuracy, stringsAsFactors = FALSE)
+print(paste("Train accuracy for model :",round(accuracy*100,2),"%"))
+
+roc_obj = roc(response = modelData$tossAdvantage, predictor = predicted_logit_model_1, smoothed = TRUE)
+auc(roc_obj)
+plot(roc_obj, col="red", lwd=3, main="ROC curve")
+```
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+b1 = a %>% group_by(toss_winner)
+
+b1 = b1 %>% summarise(
+  pred = mean(predBin)
+)
+b1$Type = "Predicted"
+
+b2 = a %>% group_by(toss_winner)
+
+b2 = b2 %>% summarise(
+  pred = mean(tossAdvantage)
+)
+b2$Type = "Actual"
+
+tossPlot = rbind(b1,b2)
+```
+
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+a1 = a %>% group_by(toss_winner, toss_decision)
+
+a1 = a1 %>% summarise(
+  pred = mean(predicted)
+)
+colnames(a1)
+```
+
+```{r, fig.height=5, fig.width= 8, results='hide', message=FALSE, warning=FALSE}
+ggplot(a1, aes(x = as.numeric(toss_winner), y = pred, fill = toss_decision)) + facet_wrap(.~toss_decision, ncol = 2) +
+  geom_bar(position = "dodge", stat = "identity")  +
+    scale_x_discrete(name="Teams", limits=c('CSK', 'DC', 'KXIP','KKR', 'MI', 	'RR','RCB', 'SRH')) +
+  ylab("Probability") + ggtitle("Probability of Winning the Match based on Toss Choice") +
+  theme(axis.text.x = element_text(angle = 0))
+```
+
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+#runsData = modelData[modelData$total_runs <=500,]
+
+runsData = modelData
+ggplot(runsData,aes(x = total_runs, y = tossAdvantage, color = tossAdvantage)) + facet_wrap(.~toss_decision) +
+  geom_point()+ geom_jitter(width = 0.3, height = 0.05) +
+  geom_smooth(method = 'glm', se = FALSE, color = "blue", family = binomial) +
+  ggtitle("Toss Advantage based on Toss Choice and Total Runs") + xlab('Total Runs') +
+  ylab('Probability of Winning')
+```
+
+
+
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+matches = read.csv("matches.csv")
+deliveries = read.csv("deliveries.csv")
+```
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+colnames(deliveries)[1] <- "id"
+matches = left_join(matches, deliveries, by = 'id')
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+drops = c('date', 'result', 'dl_applied', 'player_of_match', 'venue', 'umpire1', 'umpire2', 'umpire3', 'over', 'ball', 'batsman', 'non_striker', 'bowler', 'is_super_over', 'wide_runs', 'bye_runs', 'legbye_runs', 'noball_runs', 'penalty_runs', 'batsman_runs', 'extra_runs', 'player_dismissed', 'dismissal_kind', 'fielder')
+
+matches = matches[, !names(matches) %in% drops]
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+matches = aggregate(total_runs ~ ., FUN = sum, data = matches)
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+matches = matches[matches$inning != 3, ]
+matches = matches[matches$inning != 4, ]
+matches = matches[matches$inning != 5, ]
+matches$inning = factor(matches$inning)
+unique(matches$inning)
+
+```
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+#droping teams
+matches = subset(matches, team1 != 'Gujarat Lions')
+matches = subset(matches, team2 != 'Gujarat Lions')
+matches = subset(matches, team1 != 'Rising Pune Supergiant')
+matches = subset(matches, team2 != 'Rising Pune Supergiant')
+matches = subset(matches, team1 != 'Rising Pune Supergiants')
+matches = subset(matches, team2 != 'Rising Pune Supergiants')
+matches = subset(matches, team1 != 'Pune Warriors')
+matches = subset(matches, team2 != 'Pune Warriors')
+matches = subset(matches, team1 != 'Kochi Tuskers Kerala')
+matches = subset(matches, team2 != 'Kochi Tuskers Kerala')
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+#rename teams
+matches = data.frame(lapply(matches, function(x) {
+  gsub("Delhi Daredevils", "Delhi Capitals", x)
+}))
+matches = data.frame(lapply(matches, function(x) {
+  gsub("Deccan Chargers", "Sunrisers Hyderabad", x)
+}))
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+unique(matches$winner)
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+homegrounds = c('Mumbai', 'Bangalore', 'Kolkata', 'Delhi', 'Chandigarh', 'Jaipur', 'Chennai', 'Hyderabad')
+
+matches = subset(matches, city %in% homegrounds)
+```
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+unique(matches$city)
+```
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+unique(matches$winner)
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+hometeams = read.csv("hometeams.csv")
+#hometeams$ï..city
+colnames(hometeams)[colnames(hometeams) == 'ï..city'] <- 'city'
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+#drop unused factors
+matches$city = factor(matches$city)
+matches = matches[matches$winner != '', ]
+matches$winner = factor(matches$winner)
+
+#drop columns from matches
+drops = c('date', 'result', 'dl_applied', 'player_of_match', 'venue', 'umpire1', 'umpire2', 'umpire3')
+matches = matches[, !names(matches) %in% drops]
+```
+
+
+```{r fig.width = 12, results='hide', message=FALSE, warning=FALSE, fig.height=5}
+venue = data.frame(matches$city, matches$winner, matches$season)
+
+names(venue)[names(venue) == "matches.city"] <- "city"
+names(venue)[names(venue) == "matches.winner"] <- "winner"
+names(venue)[names(venue) == "matches.season"] <- "season"
+
+
+ggplot(venue, aes(x = city, colour = winner, fill = winner )) + geom_bar(position = "dodge") + 
+  ggtitle("Effect of Home Ground") + xlab("Cities") + ylab("Number of Matches") + theme_grey(base_size = 20) + theme(axis.text.x = element_text(angle = 90))
+
+
+
+
+```
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+home.adv = right_join(matches, hometeams, by = 'city')
+home.adv$homewinner = ifelse(home.adv$hometeam == home.adv$winner, 1, 0)
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+home.adv$hometeam = factor(home.adv$hometeam)
+unique(home.adv$hometeam)
+```
+```{r results='hide', message=FALSE, warning=FALSE}
+mean(home.adv$homewinner)
+```
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+home.adv$awayteam = ifelse(as.character(home.adv$team1) == as.character(home.adv$hometeam), as.character(home.adv$team2), as.character(home.adv$team1))
+#typeof(home.adv$total_runs)
+home.adv$inning1runs = home.adv$total_runs
+home.adv$total_runs = as.numeric(as.character(home.adv$total_runs))
+```
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+home.adv = home.adv[home.adv$inning == 1, ]
+home.adv$hometeambat = ifelse(home.adv$hometeam == home.adv$batting_team, 1, 0)
+```
+
+
+
+```{r}
+home.adv.logit = glm(homewinner ~ hometeam + awayteam + total_runs * as.factor(hometeambat), data = home.adv, 
+                     family = binomial)
+summary(home.adv.logit)
+```
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+#home.adv.logit = glm(homewinner ~ hometeam * awayteam * toss_winner * total_runs, data = home.adv, family = binomial)
+#summary(home.adv.logit)
+
+home.adv.pred = home.adv[, !names(home.adv) %in% c('homewinner')]
+
+sigmoid = function(x){
+ coe = coef(home.adv.logit)
+ 
+ total_coef = length(coe)
+ y = coe[1]
+ for(i in 2:total_coef)
+ {
+    y = y + coe[i] * x^(i-1)
+ }
+ 
+ return(inv.logit(y))
+}
+
+pred = predict(home.adv.logit, type = "response", newdata = home.adv.pred)
+home.adv$pred = pred
+predicted_logit_model_1 <- ifelse(pred > 0.54, 1, 0)
+
+accuracy <- mean(home.adv$homewinner == predicted_logit_model_1 )
+accuracy_df <- data.frame(Model = "Model Accuracy", Accuracy = accuracy, stringsAsFactors = FALSE)
+
+print(paste("Train accuracy for model :",round(accuracy*100,2),"%"))
+
+roc_obj = roc(response = home.adv$homewinner, predictor = predicted_logit_model_1, smoothed = TRUE)
+auc(roc_obj)
+plot(roc_obj, col="red", lwd=3, main="ROC curve")
+
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+#home.adv$inning1runs
+home.adv$inning1runs = as.numeric(as.character(home.adv$inning1runs))
+```
+
+```{r}
+home.adv.hometeam.agg = home.adv %>%
+                    group_by(hometeam) %>%
+                  summarise(pred = mean(pred))
+
+home.adv.hometeam1 = left_join(home.adv.hometeam.agg, hometeams, by = 'hometeam')
+
+ggplot(home.adv.hometeam1,aes(x = (abbr), y = pred)) + 
+  geom_bar(position = "dodge", stat = "identity") +
+   xlab("Teams") +
+  ylab("Winner Probability") + ggtitle("Probability of Winning the match on Home Ground") +
+  theme(axis.text.x = element_text(angle = 0))
+```
+
+
+
+```{r results='hide', message=FALSE, warning=FALSE, fig.height=8, fig.width=10}
+home.adv$group = cut((home.adv$inning1runs),c(40,80,120,160,200,240))
+
+home.adv.agg = home.adv %>%
+            group_by(hometeam,group,hometeambat) %>%
+          summarize(pred = mean(pred))
+
+home.adv.agg = na.omit(home.adv.agg)
+
+home.adv.agg$hometeambat = as.factor(home.adv.agg$hometeambat)
+
+abbr.data = left_join(home.adv.agg, hometeams, by = 'hometeam')
+
+ggplot(abbr.data, aes(x = as.numeric(group), y = as.numeric(pred),group=as.factor(hometeambat),color = hometeambat
+                         )) +
+geom_line() +
+  facet_wrap(.~ abbr, ncol = 4) +
+  ylab("Probability of winning") +
+  ggtitle("Probability of Winning Based on HomeGround Advantage") +
+  scale_x_discrete(name="Runs", limits=c("40-80","80-120","120-160","160-200","200-240"))+
+  scale_color_manual(values=c("blue", "red")) + 
+  theme_grey(base_size = 18) + 
+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+
+
+
+
+
+
